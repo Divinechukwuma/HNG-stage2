@@ -3,62 +3,66 @@
 header('Content-Type: application/json');
 
 // Function to get the client IP address
-function get_client_ip() {
-    $ipaddress = '';
-    if (isset($_SERVER['HTTP_CLIENT_IP'])) {
-        $ipaddress = $_SERVER['HTTP_CLIENT_IP'];
-    } else if (isset($_SERVER['HTTP_X_FORWARDED_FOR'])) {
-        $ipaddress = $_SERVER['HTTP_X_FORWARDED_FOR'];
-    } else if (isset($_SERVER['HTTP_X_FORWARDED'])) {
-        $ipaddress = $_SERVER['HTTP_X_FORWARDED'];
-    } else if (isset($_SERVER['HTTP_FORWARDED_FOR'])) {
-        $ipaddress = $_SERVER['HTTP_FORWARDED_FOR'];
-    } else if (isset($_SERVER['HTTP_FORWARDED'])) {
-        $ipaddress = $_SERVER['HTTP_FORWARDED'];
-    } else if (isset($_SERVER['REMOTE_ADDR'])) {
-        $ipaddress = $_SERVER['REMOTE_ADDR'];
-    } else {
-        $ipaddress = 'UNKNOWN';
+
+function get_client_ip()
+{
+    foreach (array('HTTP_CLIENT_IP',
+                   'HTTP_X_FORWARDED_FOR',
+                   'HTTP_X_FORWARDED',
+                   'HTTP_X_CLUSTER_CLIENT_IP',
+                   'HTTP_FORWARDED_FOR',
+                   'HTTP_FORWARDED',
+                   'REMOTE_ADDR') as $key){
+        if (array_key_exists($key, $_SERVER) === true){
+            foreach (explode(',', $_SERVER[$key]) as $IPaddress){
+                $IPaddress = trim($IPaddress); // Just to be safe
+
+                if (filter_var($IPaddress,
+                               FILTER_VALIDATE_IP,
+                               FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE)
+                    !== false) {
+
+                    return $IPaddress;
+                }
+            }
+        }
     }
-    return $ipaddress;
 }
 
-$visitor_name = isset($_GET['visitor_name']) ? $_GET['visitor_name'] : 'Guest';
+ $visitor_name = isset($_GET['visitor_name']) ? $_GET['visitor_name'] : 'Guest';
 
-// Get client IP
-$client_ip = get_client_ip();
+ // Get client IP
+ $client_ip = get_client_ip();
 
-// Using a free API service to get location
-$location_api_url = "http://ip-api.com/json/{$client_ip}";
-$ch = curl_init();
 
-curl_setopt($ch, CURLOPT_URL, $location_api_url);
-curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
-$location_data = curl_exec($ch);
 
-if (curl_errno($ch)) {
-    $error = curl_error($ch);
-    $city = 'Unknown';
-} else {
-    $location_data = json_decode($location_data, true);
-    if ($location_data['status'] == 'success') {
-        $city = $location_data['city'];
+ $location_api_url = "http://ip-api/json/{$client_ip}";
+$location_data = file_get_contents($location_api_url);
+
+if($location_data ===false){
+    $city = 'unknown';
+    $error = 'failed to retrive location data';
+}else{
+    $loc_o = json_decode($location_data,true);
+    if($loc_o && $loc_o['status'] === 'success'){
+        $city = $loc_o['city'];
         $error = null;
-    } else {
-        $city = 'Unknown';
-        $error = isset($location_data['message']) ? $location_data['message'] : 'Unknown error';
+    }else{
+        $city = 'unknown';
+        $error = isset($loc_o['message']) ? $loc_o['message'] : 'unknown error';
     }
 }
 
-curl_close($ch);
 
-$response = [
-    "client_ip" => $client_ip,
-    "location" => $city,
-    "greeting" => "Hello, {$visitor_name}!",
-    "error" => $error
-];
 
-echo json_encode($response);
+  $response = [
+     "client_ip" => $client_ip,
+     "location" => $city,
+     "greeting" => "Hello, {$visitor_name}!",
+     "error" => $error
+ ];
 
-?>
+ echo json_encode($response);
+
+ 
+
